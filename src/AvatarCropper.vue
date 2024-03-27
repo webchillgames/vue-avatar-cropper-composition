@@ -1,14 +1,29 @@
 <template>
   <div class="avatar-cropper">
-    <div class="avatar-cropper-overlay" :class="{ 'avatar-cropper-overlay-inline': inline }" v-if="dataUrl">
+    <div
+      class="avatar-cropper-overlay"
+      :class="{ 'avatar-cropper-overlay-inline': inline }"
+      v-if="dataUrl"
+    >
       <div class="avatar-cropper-mark" v-if="!inline">
-        <a @click="cancel" class="avatar-cropper-close" :title="labels.cancel" href="javascript:;">
+        <a
+          @click="cancel"
+          class="avatar-cropper-close"
+          :title="labels.cancel"
+          href="javascript:;"
+        >
           &times;
         </a>
       </div>
       <div class="avatar-cropper-container">
         <div class="avatar-cropper-image-container">
-          <img ref="img" :src="dataUrl" alt @load.stop="createCropper" @error="onImgElementError" />
+          <img
+            ref="img"
+            :src="dataUrl"
+            alt
+            @load.stop="createCropper"
+            @error="onImgElementError"
+          />
         </div>
         <slot></slot>
         <div class="avatar-cropper-footer">
@@ -22,28 +37,36 @@
         </div>
       </div>
     </div>
-    <input v-if="!file" :accept="cleanedMimes" :capture="capture" class="avatar-cropper-img-input" ref="input" type="file" @change="onFileInputChange" />
+    <input
+      v-if="!file"
+      :accept="cleanedMimes"
+      :capture="capture"
+      class="avatar-cropper-img-input"
+      ref="input"
+      type="file"
+      @change="onFileInputChange"
+    />
   </div>
 </template>
 
 <script>
-import Cropper from 'cropperjs'
-import 'cropperjs/dist/cropper.css'
-import mime from 'mime/lite'
-import { defineComponent } from 'vue'
+import Cropper from "cropperjs";
+import "cropperjs/dist/cropper.css";
+import mime from "mime/lite";
+import { computed, defineComponent, onMounted, ref, watch } from "vue";
 
 export default defineComponent({
-  name: 'AvatarCropper',
+  name: "AvatarCropper",
 
   emits: [
-    'update:modelValue',
-    'submit',
-    'error',
-    'cancel',
-    'changed',
-    'uploading',
-    'completed',
-    'uploaded',
+    "update:modelValue",
+    "submit",
+    "error",
+    "cancel",
+    "changed",
+    "uploading",
+    "completed",
+    "uploaded",
   ],
 
   props: {
@@ -68,14 +91,14 @@ export default defineComponent({
       type: Object,
       default() {
         return {
-          method: 'POST',
-        }
+          method: "POST",
+        };
       },
     },
 
     uploadFileField: {
       type: String,
-      default: 'file',
+      default: "file",
     },
 
     uploadFileName: {
@@ -85,7 +108,7 @@ export default defineComponent({
     uploadFormData: {
       type: FormData,
       default() {
-        return new FormData()
+        return new FormData();
       },
     },
 
@@ -98,7 +121,7 @@ export default defineComponent({
           viewMode: 1,
           movable: false,
           zoomable: false,
-        }
+        };
       },
     },
 
@@ -118,7 +141,7 @@ export default defineComponent({
 
     mimes: {
       type: String,
-      default: 'image/png, image/gif, image/jpeg, image/bmp, image/x-icon',
+      default: "image/png, image/gif, image/jpeg, image/bmp, image/x-icon",
     },
 
     capture: {
@@ -129,9 +152,9 @@ export default defineComponent({
       type: Object,
       default() {
         return {
-          submit: 'Ok',
-          cancel: 'Cancel',
-        }
+          submit: "Ok",
+          cancel: "Cancel",
+        };
       },
     },
 
@@ -141,220 +164,234 @@ export default defineComponent({
     },
   },
 
-  data() {
-    return {
-      cropper: undefined,
-      dataUrl: undefined,
-      fileName: undefined,
-      mimeType: undefined,
-    }
-  },
+  setup(props, { emit }) {
+    const cropper = ref(undefined);
+    const dataUrl = ref(undefined);
+    const fileName = ref(undefined);
+    const mimeType = ref(undefined);
+    const input = ref();
+    const img = ref();
 
-  computed: {
-    cleanedMimes() {
-      if (!this.mimes)
-        throw new Error('vue-avatar-cropper: mimes prop cannot be empty')
+    const cleanedMimes = computed(() => {
+      if (!props.mimes)
+        throw new Error("vue-avatar-cropper: mimes prop cannot be empty");
 
-      return this.mimes.trim().toLowerCase()
-    },
-  },
+      return props.mimes.trim().toLowerCase();
+    });
 
-  watch: {
-    modelValue(value) {
-      if (!value) return
+    watch(
+      () => props.modelValue,
+      (value) => {
+        if (!value) return;
 
-      if (this.file) {
-        this.onFileChange(this.file)
-      } else {
-        this.pickImage()
-      }
-
-      this.$emit('update:modelValue', false)
-    },
-  },
-
-  mounted() {
-    this.$emit('update:modelValue', false)
-  },
-
-  methods: {
-    destroy() {
-      if (this.cropper) this.cropper.destroy()
-
-      if (this.$refs.input) this.$refs.input.value = ''
-
-      this.dataUrl = undefined
-    },
-
-    submit() {
-      this.$emit('submit')
-
-      if (this.uploadUrl) {
-        this.uploadImage()
-      } else if (this.uploadHandler) {
-        this.uploadHandler(this.cropper)
-      } else {
-        this.$emit('error', {
-          type: 'user',
-          message: 'No upload handler found',
-        })
-      }
-
-      this.destroy()
-    },
-
-    cancel() {
-      this.$emit('cancel')
-      this.destroy()
-    },
-
-    onImgElementError() {
-      this.$emit('error', {
-        type: 'load',
-        message: 'File loading failed',
-      })
-      this.destroy()
-    },
-
-    pickImage() {
-      if (this.$refs.input) this.$refs.input.click()
-    },
-
-    onFileChange(file) {
-      if (this.cleanedMimes === 'image/*') {
-        if (file.type.split('/')[0] !== 'image') {
-          this.$emit('error', {
-            type: 'user',
-            message: 'File type not correct',
-          })
-          return
+        if (props.file) {
+          onFileChange(props.file);
+        } else {
+          pickImage();
         }
-      } else if (this.cleanedMimes) {
-        const correctType = this.cleanedMimes
-          .split(', ')
-          .find((mime) => mime === file.type)
+
+        emit("update:modelValue", false);
+      }
+    );
+
+    onMounted(() => {
+      emit("update:modelValue", false);
+    });
+
+    function destroyCropper() {
+      if (cropper.value) cropper.value.destroy();
+
+      if (input.value) input.value.value = "";
+
+      dataUrl.value = undefined;
+    }
+
+    function submit() {
+      emit("submit");
+
+      if (props.uploadUrl) {
+        uploadImage();
+      } else if (props.uploadHandler) {
+        props.uploadHandler(cropper.value);
+      } else {
+        emit("error", {
+          type: "user",
+          message: "No upload handler found",
+        });
+      }
+
+      destroyCropper();
+    }
+
+    function cancel() {
+      emit("cancel");
+      destroyCropper();
+    }
+
+    function onImgElementError() {
+      emit("error", {
+        type: "load",
+        message: "File loading failed",
+      });
+      destroyCropper();
+    }
+
+    function pickImage() {
+      if (input.value) input.value.click();
+    }
+
+    function onFileChange(file) {
+      if (cleanedMimes.value === "image/*") {
+        if (file.type.split("/")[0] !== "image") {
+          emit("error", {
+            type: "user",
+            message: "File type not correct",
+          });
+          return;
+        }
+      } else if (cleanedMimes.value) {
+        const correctType = cleanedMimes.value
+          .split(", ")
+          .find((mime) => mime === file.type);
 
         if (!correctType) {
-          this.$emit('error', {
-            type: 'user',
-            message: 'File type not correct',
-          })
-          return
+          emit("error", {
+            type: "user",
+            message: "File type not correct",
+          });
+          return;
         }
       }
 
-      const reader = new FileReader()
+      const reader = new FileReader();
       reader.onload = (e) => {
-        this.dataUrl = e.target.result
-      }
+        dataUrl.value = e.target.result;
+      };
 
-      reader.readAsDataURL(file)
+      reader.readAsDataURL(file);
 
-      this.fileName = file.name || 'unknown'
-      this.mimeType = file.type
+      fileName.value = file.name || "unknown";
+      mimeType.value = file.type;
 
-      this.$emit('changed', {
+      emit("changed", {
         file,
         reader,
-      })
-    },
+      });
+    }
 
-    onFileInputChange(e) {
-      if (!e.target.files || !e.target.files[0]) return
+    function onFileInputChange(e) {
+      if (!e.target.files || !e.target.files[0]) return;
 
-      this.onFileChange(e.target.files[0])
-    },
+      onFileChange(e.target.files[0]);
+    }
 
-    createCropper() {
-      this.cropper = new Cropper(this.$refs.img, this.cropperOptions)
-    },
+    function createCropper() {
+      cropper.value = new Cropper(img.value, props.cropperOptions);
+    }
 
-    getFilename(blob) {
-      const extension = mime.getExtension(blob.type)
+    function getFilename(blob) {
+      const extension = mime.getExtension(blob.type);
 
       // Default logic
-      if (!this.uploadFileName) {
-        let actualFilename = this.fileName
+      if (!props.uploadFileName) {
+        let actualFilename = fileName.value;
 
-        const filenameParts = this.fileName.split('.')
+        const filenameParts = fileName.value.split(".");
         if (filenameParts.length > 1)
-          actualFilename = filenameParts.slice(0, -1).join('.')
+          actualFilename = filenameParts.slice(0, -1).join(".");
 
-        return `${actualFilename}.${extension}`
+        return `${actualFilename}.${extension}`;
       }
 
       // User provided filename
-      if (typeof this.uploadFileName === 'string') return this.uploadFileName
+      if (typeof props.uploadFileName === "string") return props.uploadFileName;
 
-      if (typeof this.uploadFileName === 'function')
-        return this.uploadFileName({
-          filename: this.fileName,
+      if (typeof props.uploadFileName === "function")
+        return props.uploadFileName({
+          filename: fileName.value,
           mime: blob.type,
           extension,
-        })
+        });
 
-      return `unknown.${extension}`
-    },
+      return `unknown.${extension}`;
+    }
 
-    uploadImage() {
-      this.cropper.getCroppedCanvas(this.outputOptions).toBlob(
+    async function uploadImage() {
+      cropper.value.getCroppedCanvas(props.outputOptions).toBlob(
         async (blob) => {
-          const form = new FormData()
+          const form = new FormData();
 
-          for (const [key, value] of this.uploadFormData.entries()) {
-            form.append(key, value)
+          for (const [key, value] of props.uploadFormData.entries()) {
+            form.append(key, value);
           }
 
-          form.append(this.uploadFileField, blob, this.getFilename(blob))
+          form.append(props.uploadFileField, blob, getFilename(blob));
 
           const requestOptions = Object.assign(
             {
               body: form,
             },
-            this.requestOptions,
-          )
+            props.requestOptions
+          );
+          //
+          const request = new Request(props.uploadUrl, requestOptions);
 
-          const request = new Request(this.uploadUrl, requestOptions)
+          const reqPromise = fetch(request);
 
-          const reqPromise = fetch(request)
-
-          this.$emit('uploading', {
+          emit("uploading", {
             form,
             request,
             response: reqPromise,
-          })
+          });
 
-          const response = await reqPromise
-
-          this.$emit('completed', {
-            form,
-            request,
-            response,
-          })
-
-          if (response.ok) {
-            this.$emit('uploaded', {
+          try {
+            const response = await reqPromise;
+            emit("completed", {
               form,
               request,
               response,
-            })
-          } else {
-            this.$emit('error', {
-              type: 'upload',
-              message: 'Image upload fail',
-              context: {
+            });
+
+            if (response.ok) {
+              emit("uploaded", {
+                form,
                 request,
                 response,
-              },
-            })
+              });
+            }
+          } catch (e) {
+            emit("error", {
+              type: "upload",
+              message: "Image upload fail",
+              // context: {
+              //   request,
+              //   response,
+              // },
+            });
           }
         },
-        this.outputMime || this.mimeType,
-        this.outputQuality,
-      )
-    },
+        props.outputMime || mimeType.value,
+        props.outputQuality
+      );
+    }
+
+    return {
+      cropper,
+      dataUrl,
+      fileName,
+      mimeType,
+      cleanedMimes,
+      destroyCropper,
+      cancel,
+      input,
+      img,
+      createCropper,
+      submit,
+      onFileInputChange,
+      onImgElementError,
+    };
   },
-})
+});
 </script>
 
 <style lang="scss">
